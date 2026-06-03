@@ -218,3 +218,30 @@ export async function removeBooking(bookingId: string): Promise<void> {
   const { error } = await supabase.from("bookings").delete().eq("id", bookingId);
   if (error) throw error;
 }
+
+/** The current user's own bookings on a ride. */
+export async function fetchMyBookings(rideId: string): Promise<RideBooking[]> {
+  if (!supabase) return [];
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return [];
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("id, passenger_name, passenger_phone, seats")
+    .eq("ride_id", rideId)
+    .eq("user_id", auth.user.id);
+  if (error) throw error;
+  return (data as RideBooking[]) ?? [];
+}
+
+/** Rider cancels their own seat(s) on a ride — frees the seats. */
+export async function cancelMyBooking(rideId: string): Promise<void> {
+  if (!supabase) throw new Error("Supabase isn't connected.");
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Please sign in.");
+  const { error } = await supabase
+    .from("bookings")
+    .delete()
+    .eq("ride_id", rideId)
+    .eq("user_id", auth.user.id);
+  if (error) throw error;
+}

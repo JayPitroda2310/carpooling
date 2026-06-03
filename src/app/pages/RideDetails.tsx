@@ -8,6 +8,8 @@ import {
   markRideComplete,
   fetchRideBookings,
   removeBooking,
+  fetchMyBookings,
+  cancelMyBooking,
   type RideBooking,
 } from "../data/rides";
 import { fetchProfile } from "../data/profiles";
@@ -27,6 +29,7 @@ export function RideDetails() {
   const [driverPhone, setDriverPhone] = useState("");
   const [passengers, setPassengers] = useState(1);
   const [riders, setRiders] = useState<RideBooking[]>([]);
+  const [myBookings, setMyBookings] = useState<RideBooking[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -56,9 +59,30 @@ export function RideDetails() {
     fetchRideBookings(ride.id).then(setRiders).catch(() => {});
   }, [ride, authUser]);
 
+  // If you're a rider (not the driver), load your own booking on this ride.
+  useEffect(() => {
+    if (!ride || !authUser || ride.driverId === authUser.id) {
+      setMyBookings([]);
+      return;
+    }
+    fetchMyBookings(ride.id).then(setMyBookings).catch(() => {});
+  }, [ride, authUser]);
+
   const refreshRide = async (rideId: string) => {
     const updated = await fetchRideById(rideId);
     if (updated) setRide(updated);
+  };
+
+  const handleCancelMyBooking = async () => {
+    if (!ride) return;
+    if (!window.confirm("Cancel your booking?")) return;
+    try {
+      await cancelMyBooking(ride.id);
+      await refreshRide(ride.id);
+      setMyBookings([]);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not cancel booking");
+    }
   };
 
   const handleBook = async () => {
@@ -72,6 +96,7 @@ export function RideDetails() {
       await createBooking(ride.id, passengers);
       alert(`${passengers} ${passengers === 1 ? "seat" : "seats"} booked! 🎉`);
       await refreshRide(ride.id);
+      fetchMyBookings(ride.id).then(setMyBookings).catch(() => {});
       setPassengers(1);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Booking failed");
@@ -139,6 +164,7 @@ export function RideDetails() {
   const isCompleted = !!ride.completed || ride.date < todayStr;
   const available = Math.max(0, ride.seats - (ride.bookedSeats ?? 0));
   const isFull = available <= 0;
+  const mySeats = myBookings.reduce((sum, b) => sum + b.seats, 0);
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -299,21 +325,39 @@ export function RideDetails() {
                     )}
                   </div>
                 </>
-              ) : isFull ? (
-                <>
-                  <button
-                    disabled
-                    className="w-full bg-muted text-muted-foreground py-3 rounded-lg font-medium cursor-not-allowed mb-3"
-                  >
-                    Seats full
-                  </button>
-                  <p className="text-sm text-muted-foreground text-center">
-                    This ride is fully booked.
-                  </p>
-                </>
               ) : (
                 <>
-                  {/* Passenger selector */}
+                  {mySeats > 0 && (
+                    <div className="mb-5 border border-primary rounded-lg p-4 text-center">
+                      <p className="font-medium mb-2">
+                        You've booked {mySeats} {mySeats === 1 ? "seat" : "seats"}.
+                      </p>
+                      <button
+                        onClick={handleCancelMyBooking}
+                        className="text-sm font-medium text-destructive hover:underline"
+                      >
+                        Cancel booking
+                      </button>
+                    </div>
+                  )}
+
+                  {isFull ? (
+                    <>
+                      <button
+                        disabled
+                        className="w-full bg-muted text-muted-foreground py-3 rounded-lg font-medium cursor-not-allowed"
+                      >
+                        Seats full
+                      </button>
+                      {mySeats === 0 && (
+                        <p className="text-sm text-muted-foreground text-center mt-3">
+                          This ride is fully booked.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {/* Passenger selector */}
                   <div className="flex items-center justify-between mb-5">
                     <span className="text-sm font-medium">Passengers</span>
                     <div className="flex items-center gap-4">
@@ -364,6 +408,8 @@ export function RideDetails() {
                     <Shield className="w-4 h-4" />
                     <span>Secure payment with buyer protection</span>
                   </div>
+                    </>
+                  )}
                 </>
               )}
             </div>
