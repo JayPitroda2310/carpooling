@@ -3,7 +3,8 @@ import { useParams, useNavigate } from "react-router";
 import { Ride } from "../data/mockData";
 import {
   fetchRideById,
-  createBooking,
+  requestBooking,
+  acceptBooking,
   deleteRide,
   markRideComplete,
   markRideStarted,
@@ -16,7 +17,7 @@ import {
 import { fetchProfile } from "../data/profiles";
 import { useAuth } from "../context/AuthContext";
 import { formatDate, formatTime } from "../lib/format";
-import { Clock, Shield, Phone, Users, ChevronLeft, Plus, Minus } from "lucide-react";
+import { Clock, Shield, Phone, Users, ChevronLeft, Plus, Minus, Check, X } from "lucide-react";
 
 const FALLBACK_PHONE = "+91 98765 43210";
 
@@ -29,6 +30,7 @@ export function RideDetails() {
   const [booking, setBooking] = useState(false);
   const [driverPhone, setDriverPhone] = useState("");
   const [passengers, setPassengers] = useState(1);
+  const [cancelCount, setCancelCount] = useState(1);
   const [riders, setRiders] = useState<RideBooking[]>([]);
   const [myBookings, setMyBookings] = useState<RideBooking[]>([]);
 
@@ -74,19 +76,26 @@ export function RideDetails() {
     if (updated) setRide(updated);
   };
 
-  const handleCancelMyBooking = async () => {
+  const handleCancelMyBooking = async (seatsToCancel: number, status?: "pending" | "accepted") => {
     if (!ride) return;
-    if (!window.confirm("Cancel your booking?")) return;
+    const noun = status === "pending" ? "request" : "booking";
+    const message =
+      seatsToCancel >= mySeats
+        ? `Cancel your entire ${noun}?`
+        : `Cancel ${seatsToCancel} of your ${mySeats} seats?`;
+    if (!window.confirm(message)) return;
     try {
-      await cancelMyBooking(ride.id);
+      await cancelMyBooking(ride.id, seatsToCancel, status);
       await refreshRide(ride.id);
-      setMyBookings([]);
+      const mine = await fetchMyBookings(ride.id);
+      setMyBookings(mine);
+      setCancelCount(1);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Could not cancel booking");
     }
   };
 
-  const handleBook = async () => {
+  const handleRequest = async () => {
     if (!ride) return;
     if (!authUser) {
       navigate("/login");
@@ -94,15 +103,29 @@ export function RideDetails() {
     }
     setBooking(true);
     try {
-      await createBooking(ride.id, passengers);
-      alert(`${passengers} ${passengers === 1 ? "seat" : "seats"} booked! 🎉`);
+      await requestBooking(ride.id, passengers);
+      alert(
+        `Request sent for ${passengers} ${passengers === 1 ? "seat" : "seats"}! ` +
+          "The driver will confirm it shortly."
+      );
       await refreshRide(ride.id);
       fetchMyBookings(ride.id).then(setMyBookings).catch(() => {});
       setPassengers(1);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Booking failed");
+      alert(err instanceof Error ? err.message : "Request failed");
     } finally {
       setBooking(false);
+    }
+  };
+
+  const handleAcceptRequest = async (bookingId: string) => {
+    if (!ride) return;
+    try {
+      await acceptBooking(bookingId);
+      const [rb] = await Promise.all([fetchRideBookings(ride.id), refreshRide(ride.id)]);
+      setRiders(rb);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not accept request");
     }
   };
 
@@ -175,7 +198,15 @@ export function RideDetails() {
   const isCompleted = !!ride.completed || ride.date < todayStr;
   const available = Math.max(0, ride.seats - (ride.bookedSeats ?? 0));
   const isFull = available <= 0;
-  const mySeats = myBookings.reduce((sum, b) => sum + b.seats, 0);
+  const myAccepted = myBookings
+    .filter((b) => b.status === "accepted")
+    .reduce((sum, b) => sum + b.seats, 0);
+  const myPending = myBookings
+    .filter((b) => b.status === "pending")
+    .reduce((sum, b) => sum + b.seats, 0);
+  const mySeats = myAccepted + myPending;
+  const pendingRiders = riders.filter((r) => r.status === "pending");
+  const acceptedRiders = riders.filter((r) => r.status === "accepted");
   const isStarted = !!ride.started && !isCompleted;
   const statusLabel = isCompleted ? "Completed" : isStarted ? "On the way" : "Upcoming";
   const statusClass = isCompleted
@@ -292,19 +323,68 @@ export function RideDetails() {
                     Remove ride
                   </button>
 
-                  {/* Riders who booked this ride */}
+                  {/* Join requests waiting for the driver to confirm */}
                   <div className="mt-6 pt-6 border-t border-border text-left">
                     <p className="font-medium mb-3">
-                      Riders{" "}
+                      Requests{" "}
+                      <span className="text-muted-foreground font-normal">
+                        ({pendingRiders.length})
+                      </span>
+                    </p>
+                    {pendingRiders.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No pending requests.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {pendingRiders.map((r) => (
+                          <div
+                            key={r.id}
+                            className="flex items-center justify-between gap-2 border border-primary/40 bg-primary/5 rounded-lg p-3"
+                          >
+                            <div className="min-w-0">
+                              <p className="font-medium truncate">{r.passenger_name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                wants {r.seats} {r.seats === 1 ? "seat" : "seats"}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                onClick={() => handleAcceptRequest(r.id)}
+                                disabled={r.seats > available}
+                                title={r.seats > available ? "Not enough seats left" : "Accept"}
+                                aria-label={`Accept ${r.passenger_name}`}
+                                className="inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                <Check className="w-4 h-4" />
+                                Accept
+                              </button>
+                              <button
+                                onClick={() => handleRemoveRider(r.id)}
+                                aria-label={`Decline ${r.passenger_name}`}
+                                className="inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
+                              >
+                                <X className="w-4 h-4" />
+                                Decline
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Confirmed riders on this ride */}
+                  <div className="mt-6 pt-6 border-t border-border text-left">
+                    <p className="font-medium mb-3">
+                      Confirmed riders{" "}
                       <span className="text-muted-foreground font-normal">
                         ({ride.bookedSeats ?? 0}/{ride.seats} seats booked)
                       </span>
                     </p>
-                    {riders.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No riders yet.</p>
+                    {acceptedRiders.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No confirmed riders yet.</p>
                     ) : (
                       <div className="space-y-2">
-                        {riders.map((r) => (
+                        {acceptedRiders.map((r) => (
                           <div
                             key={r.id}
                             className="flex items-center justify-between gap-2 border border-border rounded-lg p-3"
@@ -351,9 +431,9 @@ export function RideDetails() {
                 </p>
               ) : isStarted ? (
                 <div className="text-center">
-                  {mySeats > 0 && (
+                  {myAccepted > 0 && (
                     <p className="font-medium mb-2">
-                      You've booked {mySeats} {mySeats === 1 ? "seat" : "seats"}.
+                      You've booked {myAccepted} {myAccepted === 1 ? "seat" : "seats"}.
                     </p>
                   )}
                   <p className="text-sm text-muted-foreground">
@@ -362,16 +442,80 @@ export function RideDetails() {
                 </div>
               ) : (
                 <>
-                  {mySeats > 0 && (
-                    <div className="mb-5 border border-primary rounded-lg p-4 text-center">
+                  {/* Pending request — waiting for the driver to accept */}
+                  {myPending > 0 && (
+                    <div className="mb-5 border border-primary/40 bg-primary/5 rounded-lg p-4 text-center">
+                      <span className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-primary/20 text-foreground mb-2">
+                        <Clock className="w-3.5 h-3.5" />
+                        Awaiting confirmation
+                      </span>
                       <p className="font-medium mb-2">
-                        You've booked {mySeats} {mySeats === 1 ? "seat" : "seats"}.
+                        Request sent for {myPending} {myPending === 1 ? "seat" : "seats"}.
+                      </p>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        The driver hasn't accepted yet. Your seat isn't reserved until they confirm.
                       </p>
                       <button
-                        onClick={handleCancelMyBooking}
+                        onClick={() => handleCancelMyBooking(myPending, "pending")}
                         className="text-sm font-medium text-destructive hover:underline"
                       >
-                        Cancel booking
+                        Withdraw request
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Confirmed booking — accepted by the driver */}
+                  {myAccepted > 0 && (
+                    <div className="mb-5 border border-primary rounded-lg p-4">
+                      <p className="font-medium mb-1 text-center">
+                        Confirmed — you've booked {myAccepted}{" "}
+                        {myAccepted === 1 ? "seat" : "seats"}.
+                      </p>
+                      <p className="text-xs text-muted-foreground text-center mb-3">
+                        The driver accepted your request. 🎉
+                      </p>
+                      {myAccepted > 1 && (
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-sm font-medium">Seats to cancel</span>
+                          <div className="flex items-center gap-4">
+                            <button
+                              type="button"
+                              onClick={() => setCancelCount((n) => Math.max(1, n - 1))}
+                              disabled={cancelCount <= 1}
+                              aria-label="Cancel fewer seats"
+                              className="w-9 h-9 rounded-full border border-primary flex items-center justify-center hover:bg-primary/10 transition-colors disabled:opacity-40"
+                            >
+                              <Minus className="w-4 h-4" />
+                            </button>
+                            <span className="w-6 text-center font-semibold text-lg">
+                              {Math.min(cancelCount, myAccepted)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setCancelCount((n) => Math.min(myAccepted, n + 1))}
+                              disabled={cancelCount >= myAccepted}
+                              aria-label="Cancel more seats"
+                              className="w-9 h-9 rounded-full border border-primary flex items-center justify-center hover:bg-primary/10 transition-colors disabled:opacity-40"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      <button
+                        onClick={() =>
+                          handleCancelMyBooking(
+                            myAccepted === 1 ? 1 : Math.min(cancelCount, myAccepted),
+                            "accepted"
+                          )
+                        }
+                        className="w-full text-sm font-medium text-destructive border border-destructive/40 rounded-lg py-2.5 hover:bg-destructive/10 transition-colors"
+                      >
+                        {myAccepted === 1
+                          ? "Cancel booking"
+                          : cancelCount >= myAccepted
+                          ? "Cancel all seats"
+                          : `Cancel ${cancelCount} ${cancelCount === 1 ? "seat" : "seats"}`}
                       </button>
                     </div>
                   )}
@@ -432,16 +576,16 @@ export function RideDetails() {
                   </div>
 
                   <button
-                    onClick={handleBook}
+                    onClick={handleRequest}
                     disabled={booking}
                     className="w-full bg-primary text-primary-foreground py-3 rounded-lg hover:bg-primary/90 transition-colors mb-3 disabled:opacity-60"
                   >
-                    {booking ? "Booking…" : "Book Now"}
+                    {booking ? "Sending request…" : "Request to join"}
                   </button>
 
                   <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
                     <Shield className="w-4 h-4" />
-                    <span>Secure payment with buyer protection</span>
+                    <span>The driver confirms your seat — you won't be charged until then</span>
                   </div>
                     </>
                   )}

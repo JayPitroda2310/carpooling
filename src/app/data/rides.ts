@@ -178,20 +178,27 @@ export async function markRideStarted(rideId: string): Promise<void> {
   if (error) throw error;
 }
 
+export type BookingStatus = "pending" | "accepted";
+
 export interface RideBooking {
   id: string;
   passenger_name: string;
   passenger_phone: string | null;
   seats: number;
+  status: BookingStatus;
 }
 
-export async function createBooking(rideId: string, seats = 1): Promise<void> {
+/**
+ * Rider requests to join a ride. Creates a PENDING request — the seat isn't
+ * reserved until the driver accepts it (see {@link acceptBooking}).
+ */
+export async function requestBooking(rideId: string, seats = 1): Promise<void> {
   if (!supabase) {
-    throw new Error("Supabase isn't connected yet — add your keys to .env to book a seat.");
+    throw new Error("Supabase isn't connected yet — add your keys to .env to request a seat.");
   }
   const { data: auth } = await supabase.auth.getUser();
   const user = auth.user;
-  if (!user) throw new Error("Please sign in to book a seat.");
+  if (!user) throw new Error("Please sign in to request a seat.");
 
   const { data: prof } = await supabase
     .from("profiles")
@@ -206,16 +213,24 @@ export async function createBooking(rideId: string, seats = 1): Promise<void> {
     passenger_name: name,
     passenger_phone: prof?.phone ?? null,
     user_id: user.id,
+    status: "pending",
   });
   if (error) throw error;
 }
 
-/** Riders who booked a ride (visible to the ride's driver). */
+/** Driver accepts a pending request — confirms it and reserves the seat(s). */
+export async function acceptBooking(bookingId: string): Promise<void> {
+  if (!supabase) throw new Error("Supabase isn't connected.");
+  const { error } = await supabase.rpc("accept_booking", { p_booking_id: bookingId });
+  if (error) throw error;
+}
+
+/** Requests + confirmed riders on a ride (visible to the ride's driver). */
 export async function fetchRideBookings(rideId: string): Promise<RideBooking[]> {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("bookings")
-    .select("id, passenger_name, passenger_phone, seats")
+    .select("id, passenger_name, passenger_phone, seats, status")
     .eq("ride_id", rideId)
     .order("created_at", { ascending: true });
   if (error) throw error;
@@ -229,29 +244,38 @@ export async function removeBooking(bookingId: string): Promise<void> {
   if (error) throw error;
 }
 
-/** The current user's own bookings on a ride. */
+/** The current user's own bookings/requests on a ride. */
 export async function fetchMyBookings(rideId: string): Promise<RideBooking[]> {
   if (!supabase) return [];
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) return [];
   const { data, error } = await supabase
     .from("bookings")
-    .select("id, passenger_name, passenger_phone, seats")
+    .select("id, passenger_name, passenger_phone, seats, status")
     .eq("ride_id", rideId)
     .eq("user_id", auth.user.id);
   if (error) throw error;
   return (data as RideBooking[]) ?? [];
 }
 
-/** Rider cancels their own seat(s) on a ride — frees the seats. */
-export async function cancelMyBooking(rideId: string): Promise<void> {
+/**
+ * Rider cancels their own seat(s) on a ride — frees the seat(s).
+ * - `seats`: how many to cancel (defaults to all).
+ * - `status`: limit to `"pending"` (withdraw a request) or `"accepted"`
+ *   (cancel a confirmed seat); omit to cancel across both.
+ */
+export async function cancelMyBooking(
+  rideId: string,
+  seats?: number,
+  status?: BookingStatus
+): Promise<void> {
   if (!supabase) throw new Error("Supabase isn't connected.");
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) throw new Error("Please sign in.");
-  const { error } = await supabase
-    .from("bookings")
-    .delete()
-    .eq("ride_id", rideId)
-    .eq("user_id", auth.user.id);
+  // A large default count cancels everything matching the status filter.
+  const count = seats ?? 1_000_000;
+  const { error } = await supabase.rpc("cancel_my_seats", {
+    p_ride_id: rideId,
+    p_seats: count,
+    p_status: status ?? null,
+  });
   if (error) throw error;
 }
