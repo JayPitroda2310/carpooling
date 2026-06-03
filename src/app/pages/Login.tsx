@@ -1,0 +1,228 @@
+import { useState } from "react";
+import { useNavigate } from "react-router";
+import { Car, Mail, Lock, User as UserIcon } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+
+export function Login() {
+  const navigate = useNavigate();
+  const { signIn, signUp, resendConfirmation, configured } = useAuth();
+
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [needsConfirm, setNeedsConfirm] = useState(false); // show "resend" helper
+
+  const isSignup = mode === "signup";
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setInfo("");
+    setNeedsConfirm(false);
+    setBusy(true);
+    try {
+      if (isSignup) {
+        const { needsConfirmation } = await signUp(email, password, name);
+        if (needsConfirmation) {
+          setMode("signin");
+          setNeedsConfirm(true);
+          setInfo("Account created! Confirm your email, then sign in.");
+        } else {
+          navigate("/profile");
+        }
+      } else {
+        await signIn(email, password);
+        navigate("/profile");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Something went wrong";
+      const code = (err as { code?: string })?.code ?? "";
+      if (/already.*regist|already.*exist/i.test(msg)) {
+        setMode("signin");
+        setPassword("");
+        setInfo("This email is already registered. Please sign in instead.");
+      } else if (code === "email_not_confirmed" || /not confirmed/i.test(msg)) {
+        setNeedsConfirm(true);
+        setError("Your email isn't confirmed yet. Confirm it, or resend the link below.");
+      } else if (/invalid login credentials/i.test(msg)) {
+        setError("Incorrect email or password — or this email hasn't been confirmed yet.");
+        setNeedsConfirm(true);
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!email) {
+      setError("Enter your email above first, then resend.");
+      return;
+    }
+    setError("");
+    setBusy(true);
+    try {
+      await resendConfirmation(email);
+      setInfo(`Confirmation email resent to ${email}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not resend email");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-muted/30 flex items-center justify-center px-4 py-12">
+      <div className="w-full max-w-md">
+        <div className="bg-card border border-primary rounded-2xl shadow-xl shadow-primary/5 p-8">
+          {/* Logo */}
+          <div className="flex flex-col items-center mb-6">
+            <div className="bg-primary text-primary-foreground p-3 rounded-xl mb-3">
+              <Car className="w-7 h-7" />
+            </div>
+            <h1 className="text-2xl font-bold">
+              {isSignup ? "Create your account" : "Welcome back"}
+            </h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              {isSignup ? "Join RideShare to book and publish rides" : "Sign in to continue"}
+            </p>
+          </div>
+
+          {/* Tab toggle */}
+          <div className="flex bg-muted rounded-lg p-1 mb-6">
+            <button
+              type="button"
+              onClick={() => {
+                setMode("signin");
+                setError("");
+              }}
+              className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
+                !isSignup ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("signup");
+                setError("");
+              }}
+              className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
+                isSignup ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+              }`}
+            >
+              Sign Up
+            </button>
+          </div>
+
+          {!configured && (
+            <div className="mb-4 text-sm bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3">
+              Supabase isn't connected yet. Add your keys to <code>.env</code> and restart the dev
+              server to enable accounts.
+            </div>
+          )}
+
+          {error && (
+            <div className="mb-4 text-sm bg-red-50 border border-red-200 text-red-700 rounded-lg p-3">
+              {error}
+            </div>
+          )}
+          {info && (
+            <div className="mb-4 text-sm bg-green-50 border border-green-200 text-green-700 rounded-lg p-3">
+              {info}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {isSignup && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Full name</label>
+                <div className="relative">
+                  <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Aarav Sharma"
+                    required
+                    className="w-full pl-10 pr-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Email</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                  className="w-full pl-10 pr-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  minLength={6}
+                  className="w-full pl-10 pr-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={busy}
+              className="w-full bg-primary text-primary-foreground py-3 rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-60"
+            >
+              {busy ? "Please wait…" : isSignup ? "Create account" : "Sign in"}
+            </button>
+
+            {needsConfirm && !isSignup && (
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={busy}
+                className="w-full text-sm text-foreground font-medium underline hover:opacity-80 disabled:opacity-60"
+              >
+                Resend confirmation email
+              </button>
+            )}
+          </form>
+
+          <p className="text-center text-sm text-muted-foreground mt-6">
+            {isSignup ? "Already have an account?" : "Don't have an account?"}{" "}
+            <button
+              type="button"
+              onClick={() => {
+                setMode(isSignup ? "signin" : "signup");
+                setError("");
+              }}
+              className="text-foreground font-semibold underline hover:opacity-80"
+            >
+              {isSignup ? "Sign in" : "Sign up"}
+            </button>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
