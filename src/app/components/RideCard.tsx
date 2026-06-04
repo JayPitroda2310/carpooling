@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { Clock, Users } from "lucide-react";
+import { Clock, Users, Bike, Car, Route } from "lucide-react";
 import { Ride } from "../data/mockData";
 import { formatDate, formatTime } from "../lib/format";
 
@@ -14,7 +14,7 @@ export function RideCard({ ride }: RideCardProps) {
       to={`/ride/${ride.id}`}
       className="block bg-card border border-primary rounded-xl p-4 md:p-6 transition-all hover:shadow-lg hover:shadow-primary/10"
     >
-      {/* Driver + price */}
+      {/* Driver + vehicle */}
       <div className="flex items-center justify-between gap-4 mb-4">
         <div className="flex items-center gap-3 min-w-0">
           <img
@@ -27,9 +27,13 @@ export function RideCard({ ride }: RideCardProps) {
             <p className="text-sm text-muted-foreground">Driver</p>
           </div>
         </div>
-        <div className="text-right shrink-0">
-          <div className="text-2xl font-bold">₹{ride.price}</div>
-          <div className="text-sm text-muted-foreground">per person</div>
+        <div className="flex items-center gap-1.5 shrink-0 text-sm font-medium text-muted-foreground">
+          {ride.vehicleType === "2-wheeler" ? (
+            <Bike className="w-4 h-4" />
+          ) : (
+            <Car className="w-4 h-4" />
+          )}
+          <span>{ride.vehicleType === "2-wheeler" ? "2-Wheeler" : "4-Wheeler"}</span>
         </div>
       </div>
 
@@ -62,6 +66,16 @@ export function RideCard({ ride }: RideCardProps) {
           <p className="font-semibold truncate">{ride.to}</p>
         </div>
       </div>
+
+      {/* On-the-way match badge (shown for route-corridor search results) */}
+      {ride.onRoute && (
+        <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/10 rounded-full px-3 py-1">
+          <Route className="w-3.5 h-3.5" />
+          <span>
+            On your way · pickup ~{ride.onRoute.pickupDist} m off route
+          </span>
+        </div>
+      )}
 
       {/* Departure + seats */}
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-semibold text-foreground mt-4">

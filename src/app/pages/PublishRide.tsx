@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Navigate } from "react-router";
-import { MapPin, Calendar, Clock, IndianRupee, Users, Car } from "lucide-react";
+import { MapPin, Calendar, Clock, Users, Car, Bike } from "lucide-react";
 import { createRide } from "../data/rides";
 import { useAuth } from "../context/AuthContext";
 
@@ -21,18 +21,14 @@ export function PublishRide() {
     to: "",
     date: "",
     time: "",
-    price: "",
+    vehicleType: "4-wheeler" as "2-wheeler" | "4-wheeler",
     seats: "1",
-    carModel: "",
   });
+
+  const isTwoWheeler = formData.vehicleType === "2-wheeler";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const price = Math.max(1, Math.trunc(Number(formData.price)) || 0);
-    if (!price) {
-      alert("Please enter a valid price.");
-      return;
-    }
     setSubmitting(true);
     try {
       const ride = await createRide({
@@ -40,9 +36,8 @@ export function PublishRide() {
         to: formData.to.trim(),
         date: formData.date,
         time: formData.time,
-        price,
-        seats: Number(formData.seats),
-        carModel: formData.carModel.trim(),
+        vehicleType: formData.vehicleType,
+        seats: isTwoWheeler ? 1 : Number(formData.seats),
       });
       alert("Ride published successfully!");
       navigate(`/ride/${ride.id}`);
@@ -74,7 +69,7 @@ export function PublishRide() {
         <div className="bg-card border border-primary rounded-xl shadow-lg p-6 md:p-8">
           <h1 className="text-3xl font-bold mb-2">Publish a Ride</h1>
           <p className="text-muted-foreground mb-8">
-            Share your journey and earn money by offering rides to travelers
+            Share your journey and offer rides to fellow travelers
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -154,29 +149,58 @@ export function PublishRide() {
             <div className="space-y-4 pt-6 border-t">
               <h2 className="text-xl font-semibold">Ride Details</h2>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-medium">
-                    <IndianRupee className="w-4 h-4" />
-                    Price per seat
-                  </label>
-                  <input
-                    type="number"
-                    name="price"
-                    value={formData.price}
-                    onChange={handleChange}
-                    placeholder="500"
-                    min="1"
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                    required
-                  />
+              {/* Vehicle type */}
+              <div className="space-y-2">
+                <span className="text-sm font-medium">Vehicle type</span>
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((f) => ({ ...f, vehicleType: "2-wheeler", seats: "1" }))
+                    }
+                    className={`flex items-center justify-center gap-2 px-4 py-3 border rounded-lg font-medium transition-colors ${
+                      isTwoWheeler
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border hover:bg-muted/50"
+                    }`}
+                  >
+                    <Bike className="w-5 h-5" />
+                    2-Wheeler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData((f) => ({ ...f, vehicleType: "4-wheeler" }))}
+                    className={`flex items-center justify-center gap-2 px-4 py-3 border rounded-lg font-medium transition-colors ${
+                      !isTwoWheeler
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border hover:bg-muted/50"
+                    }`}
+                  >
+                    <Car className="w-5 h-5" />
+                    4-Wheeler
+                  </button>
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-medium">
-                    <Users className="w-4 h-4" />
-                    Available seats
-                  </label>
+              {/* Available seats */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <Users className="w-4 h-4" />
+                  Available seats
+                </label>
+                {isTwoWheeler ? (
+                  <>
+                    <input
+                      type="text"
+                      value="1 seat"
+                      disabled
+                      className="w-full px-4 py-3 border rounded-lg bg-muted text-muted-foreground cursor-not-allowed"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      A two-wheeler can carry one passenger.
+                    </p>
+                  </>
+                ) : (
                   <select
                     name="seats"
                     value={formData.seats}
@@ -189,23 +213,7 @@ export function PublishRide() {
                     <option value="3">3 seats</option>
                     <option value="4">4 seats</option>
                   </select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-medium">
-                    <Car className="w-4 h-4" />
-                    Car model
-                  </label>
-                  <input
-                    type="text"
-                    name="carModel"
-                    value={formData.carModel}
-                    onChange={handleChange}
-                    placeholder="Hyundai Creta"
-                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                    required
-                  />
-                </div>
+                )}
               </div>
             </div>
 
@@ -229,11 +237,10 @@ export function PublishRide() {
         <div className="mt-8 bg-primary/10 border border-primary/20 rounded-xl p-6">
           <h3 className="font-semibold mb-3">Tips for a successful ride</h3>
           <ul className="space-y-2 text-sm text-muted-foreground">
-            <li>• Set a fair price based on distance and fuel costs</li>
             <li>• Be clear about pickup and drop-off locations</li>
             <li>• Update your ride details if plans change</li>
             <li>• Communicate with passengers before the trip</li>
-            <li>• Keep your car clean and comfortable</li>
+            <li>• Keep your vehicle clean and comfortable</li>
           </ul>
         </div>
       </div>

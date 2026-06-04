@@ -46,7 +46,7 @@ export async function fetchMyTrips(userId: string): Promise<Trip[]> {
       .order("travel_date", { ascending: true }),
     supabase
       .from("bookings")
-      .select("id, created_at, status, rides(from_location, to_location, travel_date, driver_name, completed, started)")
+      .select("id, created_at, status, ride_id, rides(from_location, to_location, travel_date, driver_name, completed, started)")
       .eq("user_id", userId)
       .order("created_at", { ascending: false }),
   ]);
@@ -70,6 +70,7 @@ export async function fetchMyTrips(userId: string): Promise<Trip[]> {
       const statusLabel = b.status === "pending" ? "Request pending" : "Confirmed";
       return {
         key: `p-${b.id}`,
+        rideId: b.ride_id,
         type: "passenger" as const,
         from: ride.from_location,
         to: ride.to_location,

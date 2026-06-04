@@ -15,11 +15,15 @@ export interface Ride {
   seats: number;
   distance: string;
   duration: string;
-  carModel: string;
+  vehicleType: "2-wheeler" | "4-wheeler";
   preferences: string[];
   completed?: boolean;
   started?: boolean;
   bookedSeats?: number;
+  /** Driving route polyline as [lng,lat] pairs (when the ride was geocoded). */
+  route?: [number, number][];
+  /** Set when this ride matched a rider's search along its route corridor. */
+  onRoute?: { pickupDist: number; dropDist: number };
 }
 
 export const mockRides: Ride[] = [
@@ -39,7 +43,7 @@ export const mockRides: Ride[] = [
     seats: 2,
     distance: "280 km",
     duration: "5h 00m",
-    carModel: "Hyundai Creta",
+    vehicleType: "4-wheeler",
     preferences: ["No Smoking", "Music OK", "Pets OK"],
   },
   {
@@ -58,7 +62,7 @@ export const mockRides: Ride[] = [
     seats: 3,
     distance: "150 km",
     duration: "3h 15m",
-    carModel: "Maruti Suzuki Swift",
+    vehicleType: "4-wheeler",
     preferences: ["No Smoking", "Quiet Ride"],
   },
   {
@@ -77,7 +81,7 @@ export const mockRides: Ride[] = [
     seats: 1,
     distance: "145 km",
     duration: "3h 00m",
-    carModel: "Tata Nexon",
+    vehicleType: "2-wheeler",
     preferences: ["No Smoking", "Music OK", "Chatty"],
   },
   {
@@ -96,7 +100,7 @@ export const mockRides: Ride[] = [
     seats: 2,
     distance: "575 km",
     duration: "9h 00m",
-    carModel: "Toyota Innova Crysta",
+    vehicleType: "4-wheeler",
     preferences: ["No Smoking", "Pets OK"],
   },
   {
@@ -115,7 +119,7 @@ export const mockRides: Ride[] = [
     seats: 3,
     distance: "265 km",
     duration: "4h 30m",
-    carModel: "Honda City",
+    vehicleType: "4-wheeler",
     preferences: ["No Smoking", "Music OK"],
   },
   {
@@ -134,7 +138,7 @@ export const mockRides: Ride[] = [
     seats: 2,
     distance: "350 km",
     duration: "6h 00m",
-    carModel: "Mahindra XUV700",
+    vehicleType: "4-wheeler",
     preferences: ["No Smoking", "Quiet Ride"],
   },
 ];

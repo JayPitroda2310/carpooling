@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Navigate } from "react-router";
+import { Navigate, useNavigate } from "react-router";
 import { MapPin, Calendar, Edit2, Car, Camera } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -15,6 +15,7 @@ import { formatDate } from "../lib/format";
 const AVATAR = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop";
 
 export function Profile() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<"rides" | "settings">("rides");
   const { user: authUser, loading, configured, refreshProfile } = useAuth();
 
@@ -256,7 +257,23 @@ export function Profile() {
                           ? "bg-green-100 text-green-700"
                           : "bg-primary/20 text-foreground";
                         return (
-                          <div key={trip.key} className="border border-border rounded-lg p-4">
+                          <div
+                            key={trip.key}
+                            onClick={() => trip.rideId && navigate(`/ride/${trip.rideId}`)}
+                            role={trip.rideId ? "button" : undefined}
+                            tabIndex={trip.rideId ? 0 : undefined}
+                            onKeyDown={(e) => {
+                              if (trip.rideId && (e.key === "Enter" || e.key === " ")) {
+                                e.preventDefault();
+                                navigate(`/ride/${trip.rideId}`);
+                              }
+                            }}
+                            className={`border border-border rounded-lg p-4 ${
+                              trip.rideId
+                                ? "cursor-pointer transition-all hover:border-primary hover:shadow-md hover:shadow-primary/10"
+                                : ""
+                            }`}
+                          >
                             <div className="flex items-center justify-between gap-2 mb-3">
                               <div className="flex items-center gap-2">
                                 {trip.type === "driver" ? (
@@ -311,7 +328,10 @@ export function Profile() {
                                 <div className="flex items-center gap-2">
                                   {!isCompleted && !isStarted && (
                                     <button
-                                      onClick={() => handleStart(trip.rideId!)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleStart(trip.rideId!);
+                                      }}
                                       className="text-xs font-medium px-3 py-1.5 rounded-lg border border-primary hover:bg-primary/10 transition-colors"
                                     >
                                       Start ride
@@ -319,14 +339,20 @@ export function Profile() {
                                   )}
                                   {!isCompleted && isStarted && (
                                     <button
-                                      onClick={() => handleComplete(trip.rideId!)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleComplete(trip.rideId!);
+                                      }}
                                       className="text-xs font-medium px-3 py-1.5 rounded-lg border border-primary hover:bg-primary/10 transition-colors"
                                     >
                                       Mark complete
                                     </button>
                                   )}
                                   <button
-                                    onClick={() => handleRemove(trip.rideId!)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRemove(trip.rideId!);
+                                    }}
                                     className="text-xs font-medium px-3 py-1.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
                                   >
                                     Remove

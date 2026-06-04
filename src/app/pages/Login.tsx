@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { Car, Mail, Lock, User as UserIcon, Eye, EyeOff } from "lucide-react";
+import { Car, Mail, Lock, User as UserIcon, Phone, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 export function Login() {
@@ -9,6 +9,7 @@ export function Login() {
 
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -27,7 +28,7 @@ export function Login() {
     setBusy(true);
     try {
       if (isSignup) {
-        const { needsConfirmation } = await signUp(email, password, name);
+        const { needsConfirmation } = await signUp(email, password, name, phone.trim());
         if (needsConfirmation) {
           setMode("signin");
           setNeedsConfirm(true);
@@ -152,6 +153,25 @@ export function Login() {
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Aarav Sharma"
                     required
+                    className="w-full pl-10 pr-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              </div>
+            )}
+
+            {isSignup && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Mobile number</label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+91 98765 43210"
+                    required
+                    pattern="[0-9+\-\s()]{7,}"
+                    title="Enter a valid mobile number"
                     className="w-full pl-10 pr-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>

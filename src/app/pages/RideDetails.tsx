@@ -15,9 +15,10 @@ import {
   type RideBooking,
 } from "../data/rides";
 import { fetchProfile } from "../data/profiles";
+import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { formatDate, formatTime } from "../lib/format";
-import { Clock, Shield, Phone, Users, ChevronLeft, Plus, Minus, Check, X } from "lucide-react";
+import { Clock, Shield, Phone, Users, ChevronLeft, Plus, Minus, Check, X, Bike, Car } from "lucide-react";
 
 const FALLBACK_PHONE = "+91 98765 43210";
 
@@ -70,6 +71,43 @@ export function RideDetails() {
     }
     fetchMyBookings(ride.id).then(setMyBookings).catch(() => {});
   }, [ride, authUser]);
+
+  // Live updates — refresh automatically when this ride or its bookings change
+  // in the database (e.g. the driver accepts a request, or a seat is cancelled),
+  // so neither side has to reload the page.
+  useEffect(() => {
+    if (!supabase || !id) return;
+    const client = supabase;
+
+    const reload = async () => {
+      const updated = await fetchRideById(id).catch(() => null);
+      if (!updated) return;
+      setRide(updated);
+      if (authUser && updated.driverId === authUser.id) {
+        fetchRideBookings(id).then(setRiders).catch(() => {});
+      } else if (authUser) {
+        fetchMyBookings(id).then(setMyBookings).catch(() => {});
+      }
+    };
+
+    const channel = client
+      .channel(`ride-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "rides", filter: `id=eq.${id}` },
+        reload
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "bookings", filter: `ride_id=eq.${id}` },
+        reload
+      )
+      .subscribe();
+
+    return () => {
+      client.removeChannel(channel);
+    };
+  }, [id, authUser]);
 
   const refreshRide = async (rideId: string) => {
     const updated = await fetchRideById(rideId);
@@ -285,9 +323,15 @@ export function RideDetails() {
 
             {/* Booking section (or owner controls when it's your ride) */}
             <div className="p-6">
-              <div className="text-center mb-6">
-                <div className="text-4xl font-bold mb-1">₹{ride.price}</div>
-                <div className="text-sm text-muted-foreground">per passenger</div>
+              <div className="flex items-center justify-center gap-2 mb-6">
+                {ride.vehicleType === "2-wheeler" ? (
+                  <Bike className="w-5 h-5 text-primary" />
+                ) : (
+                  <Car className="w-5 h-5 text-primary" />
+                )}
+                <span className="font-semibold">
+                  {ride.vehicleType === "2-wheeler" ? "Two-wheeler" : "Four-wheeler"}
+                </span>
               </div>
 
               {isOwner ? (
@@ -437,7 +481,7 @@ export function RideDetails() {
                     </p>
                   )}
                   <p className="text-sm text-muted-foreground">
-                    The driver is on the way — this ride has departed.
+                    This ride has started.
                   </p>
                 </div>
               ) : (
@@ -562,17 +606,9 @@ export function RideDetails() {
                     </div>
                   </div>
 
-                  <div className="space-y-3 mb-6">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">
-                        Price per passenger × {passengers}
-                      </span>
-                      <span className="font-semibold">₹{ride.price}</span>
-                    </div>
-                    <div className="flex justify-between border-t border-border pt-3">
-                      <span className="font-semibold">Total</span>
-                      <span className="font-bold text-lg">₹{ride.price * passengers}</span>
-                    </div>
+                  <div className="flex justify-between border-t border-border py-3 mb-6">
+                    <span className="font-semibold">Seats requested</span>
+                    <span className="font-bold text-lg">{passengers}</span>
                   </div>
 
                   <button
@@ -585,7 +621,7 @@ export function RideDetails() {
 
                   <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
                     <Shield className="w-4 h-4" />
-                    <span>The driver confirms your seat — you won't be charged until then</span>
+                    <span>The driver reviews and confirms your seat</span>
                   </div>
                     </>
                   )}

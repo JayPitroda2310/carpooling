@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { geocode, routeBetween, corridorMatch, type Polyline } from "../lib/geo";
 import { Ride } from "./mockData";
 
 /** Shape of a row in the `rides` table. */
@@ -17,11 +18,13 @@ interface RideRow {
   seats: number;
   distance: string;
   duration: string;
-  car_model: string;
+  car_model?: string | null;
+  vehicle_type?: string | null;
   preferences: string[] | null;
   completed?: boolean | null;
   started?: boolean | null;
   booked_seats?: number | null;
+  route_geom?: Polyline | null;
 }
 
 function mapRow(r: RideRow): Ride {
@@ -42,11 +45,12 @@ function mapRow(r: RideRow): Ride {
     seats: r.seats,
     distance: r.distance,
     duration: r.duration,
-    carModel: r.car_model,
+    vehicleType: r.vehicle_type === "2-wheeler" ? "2-wheeler" : "4-wheeler",
     preferences: r.preferences ?? [],
     completed: Boolean(r.completed),
     started: Boolean(r.started),
     bookedSeats: r.booked_seats ?? 0,
+    route: r.route_geom ?? undefined,
   };
 }
 
@@ -95,19 +99,56 @@ export async function searchRides(filters: SearchFilters = {}): Promise<Ride[]> 
 
   if (!supabase) return [];
 
+  // Base query: active, user-published rides matching date/seat filters.
   let q = supabase
     .from("rides")
     .select("*")
     .eq("completed", false)
     .eq("started", false) // hide rides already on the way
     .not("user_id", "is", null); // only real, user-published rides
-  if (from) q = q.ilike("from_location", `%${from}%`);
-  if (to) q = q.ilike("to_location", `%${to}%`);
   if (date) q = q.gte("travel_date", date);
   if (minSeats) q = q.gte("seats", minSeats);
   const { data, error } = await q.order("travel_date", { ascending: true });
   if (error) throw error;
-  return (data as RideRow[]).map(mapRow);
+  const rides = (data as RideRow[]).map(mapRow);
+
+  if (!from && !to) return rides;
+
+  // Try route-corridor matching: geocode the rider's pickup + drop, then keep
+  // rides whose route passes within 500m of both points (in travel order).
+  if (from && to) {
+    try {
+      const [pickup, drop] = await Promise.all([geocode(from), geocode(to)]);
+      if (pickup && drop) {
+        const matched = rides
+          .map((ride) => {
+            if (ride.route && ride.route.length > 1) {
+              const m = corridorMatch(pickup, drop, ride.route);
+              return m.onRoute
+                ? { ...ride, onRoute: { pickupDist: m.pickupDist, dropDist: m.dropDist } }
+                : null;
+            }
+            // no geometry stored → fall back to text match for this ride
+            return textMatch(ride, from, to) ? ride : null;
+          })
+          .filter((r): r is Ride => r !== null)
+          .sort((a, b) => (a.onRoute?.pickupDist ?? 1e9) - (b.onRoute?.pickupDist ?? 1e9));
+        return matched;
+      }
+    } catch {
+      // geocoding/routing unavailable — fall through to text matching
+    }
+  }
+
+  // Fallback: simple text match on the typed locations.
+  return rides.filter((r) => textMatch(r, from, to));
+}
+
+/** Case-insensitive substring match on a ride's from/to text. */
+function textMatch(ride: Ride, from: string, to: string): boolean {
+  const okFrom = !from || ride.from.toLowerCase().includes(from.toLowerCase());
+  const okTo = !to || ride.to.toLowerCase().includes(to.toLowerCase());
+  return okFrom && okTo;
 }
 
 export interface NewRideInput {
@@ -115,9 +156,8 @@ export interface NewRideInput {
   to: string;
   date: string;
   time: string;
-  price: number;
+  vehicleType: "2-wheeler" | "4-wheeler";
   seats: number;
-  carModel: string;
   preferences?: string[];
 }
 
@@ -137,6 +177,17 @@ export async function createRide(input: NewRideInput): Promise<Ride> {
     throw new Error("Supabase isn't connected yet — add your keys to .env to publish rides.");
   }
   const me = await currentUser();
+
+  // Best-effort: geocode the endpoints and compute the driving route so the
+  // ride can be matched along its 500m corridor. Failures don't block publish.
+  let route: Polyline | null = null;
+  try {
+    const [a, b] = await Promise.all([geocode(input.from), geocode(input.to)]);
+    if (a && b) route = await routeBetween(a, b);
+  } catch {
+    route = null;
+  }
+
   const row = {
     user_id: me.id,
     driver_name: me.name,
@@ -148,16 +199,56 @@ export async function createRide(input: NewRideInput): Promise<Ride> {
     to_location: input.to,
     travel_date: input.date,
     departure_time: input.time,
-    price: input.price,
-    seats: input.seats,
+    // money was removed from the app — kept at 0 until a new concept lands
+    price: 0,
+    // a two-wheeler only carries one passenger
+    seats: input.vehicleType === "2-wheeler" ? 1 : input.seats,
     distance: "—",
     duration: "—",
-    car_model: input.carModel,
+    vehicle_type: input.vehicleType,
     preferences: input.preferences ?? [],
+    route_geom: route,
   };
   const { data, error } = await supabase.from("rides").insert(row).select().single();
   if (error) throw error;
   return mapRow(data as RideRow);
+}
+
+/**
+ * Compute and store the driving route for the current user's rides that don't
+ * have one yet (e.g. rides published before route-corridor matching existed).
+ * RLS limits this to the signed-in driver's own rides. Returns how many were
+ * updated. Best-effort — skips any ride whose endpoints can't be geocoded.
+ */
+export async function backfillMissingRoutes(): Promise<number> {
+  if (!supabase) return 0;
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return 0;
+
+  const { data, error } = await supabase
+    .from("rides")
+    .select("id, from_location, to_location")
+    .eq("user_id", auth.user.id)
+    .is("route_geom", null);
+  if (error || !data) return 0;
+
+  let updated = 0;
+  for (const r of data as { id: string; from_location: string; to_location: string }[]) {
+    try {
+      const [a, b] = await Promise.all([geocode(r.from_location), geocode(r.to_location)]);
+      if (!a || !b) continue;
+      const route = await routeBetween(a, b);
+      if (!route) continue;
+      const { error: upErr } = await supabase
+        .from("rides")
+        .update({ route_geom: route })
+        .eq("id", r.id);
+      if (!upErr) updated++;
+    } catch {
+      // skip this ride, keep going
+    }
+  }
+  return updated;
 }
 
 export async function deleteRide(rideId: string): Promise<void> {

@@ -93,7 +93,7 @@ export default function RidesMap() {
       const links = ridesFromHere
         .map(
           (r) =>
-            `<a href="/ride/${r.id}" data-ride="${r.id}" style="display:block;color:#4f46e5;font-size:13px;text-decoration:none;margin-top:2px">→ ${r.to} · ₹${r.price}</a>`
+            `<a href="/ride/${r.id}" data-ride="${r.id}" style="display:block;color:#4f46e5;font-size:13px;text-decoration:none;margin-top:2px">→ ${r.to}</a>`
         )
         .join("");
       const html = `

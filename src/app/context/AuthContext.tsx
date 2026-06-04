@@ -25,7 +25,8 @@ interface AuthContextValue {
   signUp: (
     email: string,
     password: string,
-    fullName: string
+    fullName: string,
+    phone: string
   ) => Promise<{ needsConfirmation: boolean }>;
   resendConfirmation: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -79,12 +80,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   };
 
-  const signUp = async (email: string, password: string, fullName: string) => {
+  const signUp = async (email: string, password: string, fullName: string, phone: string) => {
     if (!supabase) throw new Error("Supabase isn't connected.");
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName } },
+      options: { data: { full_name: fullName, phone } },
     });
     if (error) throw error;
     // No session means Supabase requires email confirmation before sign-in.

@@ -27,7 +27,6 @@ export function SearchResults() {
 
   // sidebar filter state
   const [departure, setDeparture] = useState("any");
-  const [priceRange, setPriceRange] = useState("any");
   const [seatsMin, setSeatsMin] = useState(0);
   const [petsOnly, setPetsOnly] = useState(false);
   const [nonSmoking, setNonSmoking] = useState(false);
@@ -42,10 +41,6 @@ export function SearchResults() {
 
   const filtered = useMemo(() => {
     return results.filter((r) => {
-      // price range (₹)
-      if (priceRange === "under500" && r.price >= 500) return false;
-      if (priceRange === "500-1000" && (r.price < 500 || r.price > 1000)) return false;
-      if (priceRange === "1000plus" && r.price < 1000) return false;
       // seats available
       if (seatsMin && r.seats < seatsMin) return false;
       // departure window
@@ -60,7 +55,7 @@ export function SearchResults() {
       if (nonSmoking && !r.preferences.includes("No Smoking")) return false;
       return true;
     });
-  }, [results, priceRange, seatsMin, departure, petsOnly, nonSmoking]);
+  }, [results, seatsMin, departure, petsOnly, nonSmoking]);
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -94,20 +89,6 @@ export function SearchResults() {
                     <option value="morning">Morning (6-12)</option>
                     <option value="afternoon">Afternoon (12-18)</option>
                     <option value="evening">Evening (18-24)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm mb-2">Price Range</label>
-                  <select
-                    value={priceRange}
-                    onChange={(e) => setPriceRange(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg bg-input-background focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    <option value="any">Any price</option>
-                    <option value="under500">Under ₹500</option>
-                    <option value="500-1000">₹500 – ₹1000</option>
-                    <option value="1000plus">₹1000+</option>
                   </select>
                 </div>
 

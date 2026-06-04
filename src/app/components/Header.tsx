@@ -61,7 +61,7 @@ export function Header() {
                 </button>
                 <button
                   onClick={handleSignOut}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-accent transition-colors text-muted-foreground"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
                   <span>Log out</span>
@@ -115,7 +115,7 @@ export function Header() {
                 </Link>
                 <button
                   onClick={handleSignOut}
-                  className="block w-full text-left px-4 py-2 text-foreground/80 hover:bg-accent rounded-lg transition-colors"
+                  className="block w-full text-left px-4 py-2 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
                 >
                   Log out
                 </button>
