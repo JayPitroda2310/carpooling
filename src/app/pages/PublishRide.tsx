@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate, Navigate } from "react-router";
-import { MapPin, Calendar, Clock, Users, Car, Bike } from "lucide-react";
+import { MapPin, Calendar, Clock, Users, Car, Bike, LocateFixed, Loader2 } from "lucide-react";
 import { createRide } from "../data/rides";
+import { detectCurrentLocation } from "../lib/geo";
 import { useAuth } from "../context/AuthContext";
 
 // local YYYY-MM-DD (today) — used as the earliest selectable date
@@ -16,6 +17,7 @@ export function PublishRide() {
   const navigate = useNavigate();
   const { user, loading, configured } = useAuth();
   const [submitting, setSubmitting] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [formData, setFormData] = useState({
     from: "",
     to: "",
@@ -55,6 +57,24 @@ export function PublishRide() {
     });
   };
 
+  const handleDetectLocation = async () => {
+    setLocating(true);
+    try {
+      const { label, accuracy } = await detectCurrentLocation();
+      setFormData((f) => ({ ...f, from: label }));
+      if (accuracy > 1000) {
+        alert(
+          `Your location was only accurate to ~${Math.round(accuracy / 1000)} km ` +
+            `(this device has no GPS). Please double-check or edit the "Leaving from" field.`
+        );
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not determine your location");
+    } finally {
+      setLocating(false);
+    }
+  };
+
   // Must be signed in to publish, so the ride is tied to your account
   // (and shows up under "My Rides").
   if (configured && !loading && !user) {
@@ -79,10 +99,25 @@ export function PublishRide() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-medium">
-                    <MapPin className="w-4 h-4" />
-                    Leaving from
-                  </label>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="flex items-center gap-2 text-sm font-medium">
+                      <MapPin className="w-4 h-4" />
+                      Leaving from
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleDetectLocation}
+                      disabled={locating}
+                      className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-60"
+                    >
+                      {locating ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <LocateFixed className="w-3.5 h-3.5" />
+                      )}
+                      {locating ? "Detecting…" : "Use my location"}
+                    </button>
+                  </div>
                   <input
                     type="text"
                     name="from"

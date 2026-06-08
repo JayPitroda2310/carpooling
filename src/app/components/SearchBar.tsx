@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { MapPin, Calendar, Users, Search } from "lucide-react";
+import { MapPin, Calendar, Users, Search, LocateFixed, Loader2 } from "lucide-react";
+import { detectCurrentLocation } from "../lib/geo";
 
 interface SearchBarProps {
   variant?: "hero" | "compact";
@@ -12,6 +13,25 @@ export function SearchBar({ variant = "hero" }: SearchBarProps) {
   const [to, setTo] = useState("");
   const [date, setDate] = useState("");
   const [passengers, setPassengers] = useState("1");
+  const [locating, setLocating] = useState(false);
+
+  const handleDetectLocation = async () => {
+    setLocating(true);
+    try {
+      const { label, accuracy } = await detectCurrentLocation();
+      setFrom(label);
+      if (accuracy > 1000) {
+        alert(
+          `Your location was only accurate to ~${Math.round(accuracy / 1000)} km ` +
+            `(this device has no GPS). Please double-check or edit the "From" field.`
+        );
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not determine your location");
+    } finally {
+      setLocating(false);
+    }
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,8 +55,21 @@ export function SearchBar({ variant = "hero" }: SearchBarProps) {
               placeholder="From"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full pl-10 pr-10 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
             />
+            <button
+              type="button"
+              onClick={handleDetectLocation}
+              disabled={locating}
+              title="Use my current location"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-primary hover:bg-primary/10 rounded disabled:opacity-60"
+            >
+              {locating ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <LocateFixed className="w-4 h-4" />
+              )}
+            </button>
           </div>
           <div className="flex-1 relative">
             <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
@@ -64,10 +97,25 @@ export function SearchBar({ variant = "hero" }: SearchBarProps) {
     <form onSubmit={handleSearch} className="bg-card border border-primary rounded-2xl shadow-2xl p-6 md:p-8 max-w-4xl mx-auto">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="space-y-2">
-          <label className="text-sm text-muted-foreground flex items-center gap-2">
-            <MapPin className="w-4 h-4" />
-            Leaving from
-          </label>
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-sm text-muted-foreground flex items-center gap-2">
+              <MapPin className="w-4 h-4" />
+              Leaving from
+            </label>
+            <button
+              type="button"
+              onClick={handleDetectLocation}
+              disabled={locating}
+              className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-60"
+            >
+              {locating ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <LocateFixed className="w-3.5 h-3.5" />
+              )}
+              {locating ? "Detecting…" : "Use my location"}
+            </button>
+          </div>
           <input
             type="text"
             placeholder="City, address, station..."

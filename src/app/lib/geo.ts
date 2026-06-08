@@ -28,6 +28,64 @@ export async function geocode(query: string): Promise<LatLng | null> {
   return { lat, lng };
 }
 
+/** Coordinates → a precise, human-readable address (null if not found). */
+export async function reverseGeocode({ lat, lng }: LatLng): Promise<string | null> {
+  // Nominatim at zoom 18 resolves to street/building level for the exact point,
+  // rather than snapping to the nearest named landmark.
+  const url =
+    `https://nominatim.openstreetmap.org/reverse?format=jsonv2` +
+    `&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  const data = await res.json();
+  const a = data.address;
+  if (!a) return data.display_name ?? null;
+  // Build "house road, neighbourhood, city" from the most specific parts available.
+  const street = [a.house_number, a.road].filter(Boolean).join(" ");
+  const parts = [
+    street || a.amenity || a.building,
+    a.neighbourhood || a.suburb || a.quarter,
+    a.city || a.town || a.village || a.municipality || a.county,
+  ].filter(Boolean);
+  return parts.length ? [...new Set(parts)].join(", ") : data.display_name ?? null;
+}
+
+/**
+ * Ask the browser for the user's current location and reverse-geocode it to a
+ * readable address. Rejects if permission is denied or geolocation is unavailable.
+ */
+export async function detectCurrentLocation(): Promise<{
+  label: string;
+  coords: LatLng;
+  /** Reported accuracy radius in metres (lower is better). */
+  accuracy: number;
+}> {
+  if (!("geolocation" in navigator)) {
+    throw new Error("Location is not supported by this browser.");
+  }
+  const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      resolve,
+      (err) =>
+        reject(
+          new Error(
+            err.code === err.PERMISSION_DENIED
+              ? "Location permission denied. Please allow access and try again."
+              : err.code === err.TIMEOUT
+                ? "Timed out getting a precise location. Try again outdoors or near a window."
+                : "Could not determine your location. Try again."
+          )
+        ),
+      // maximumAge: 0 forces a fresh fix; high accuracy enables GPS where available.
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  });
+  const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+  const accuracy = pos.coords.accuracy;
+  const label =
+    (await reverseGeocode(coords)) ?? `${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`;
+  return { label, coords, accuracy };
+}
+
 /** Shortest driving route between two points as a [lng,lat] polyline (null on failure). */
 export async function routeBetween(a: LatLng, b: LatLng): Promise<Polyline | null> {
   const url =
